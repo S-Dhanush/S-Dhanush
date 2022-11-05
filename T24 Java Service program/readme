@@ -1,3 +1,4 @@
 Contains t24 java service routine programs .
 
 for now thexe example have enough information to understand the service routine.
+#we use " SERVICE " SuperClass for the routines.
