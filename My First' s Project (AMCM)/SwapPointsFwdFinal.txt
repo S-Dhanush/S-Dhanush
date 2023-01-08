@@ -1,0 +1,156 @@
+package com.amcm.java;
+
+import java.math.RoundingMode;
+
+import java.math.BigDecimal;
+
+import com.temenos.api.TDate;
+import com.temenos.api.TNumber;
+import com.temenos.api.TStructure;
+import com.temenos.t24.api.complex.eb.templatehook.TransactionContext;
+import com.temenos.t24.api.hook.system.RecordLifecycle;
+import com.temenos.t24.api.system.DataAccess;
+import com.temenos.t24.api.system.Session;
+import com.temenos.t24.api.records.company.CompanyRecord;
+import com.temenos.t24.api.records.forex.ForexRecord;
+import com.temenos.t24.api.rates.Currency;
+
+/**
+ * TODO: Document me!
+ *
+ * @author DS00843856
+ *
+ */
+public class SwapPointsFwdFinal extends RecordLifecycle {
+
+    @Override
+    public void defaultFieldValues(String application, String currentRecordId, TStructure currentRecord,
+            TStructure unauthorisedRecord, TStructure liveRecord, TransactionContext transactionContext) {
+        // TODO Auto-generated method stub
+        ForexRecord fxRec = new ForexRecord(currentRecord);
+
+        String amountSold = fxRec.getLocalRefField("L.1.AMOUNT.SOLD").getValue().toString();
+        String amountBought = fxRec.getLocalRefField("L.1.AMOUNT.BOUGHT").getValue().toString();
+
+        if ((amountSold.isEmpty()) || (amountBought.isEmpty())) {
+            String leg1coreAmountSold = fxRec.getAmountSold().getValue().toString();
+            String leg1coreAmountBought = fxRec.getAmountBought().getValue().toString();
+
+            fxRec.getLocalRefField("L.1.AMOUNT.SOLD").setValue(leg1coreAmountSold);
+            fxRec.getLocalRefField("L.1.AMOUNT.BOUGHT").setValue(leg1coreAmountBought);
+            try {
+                float generror = Float.parseFloat(leg1coreAmountSold);
+                float generrortwo = Float.parseFloat(leg1coreAmountBought);
+            } catch (NumberFormatException e) {
+
+            }
+
+        } else {
+
+            float leg1Amtsold = Float.parseFloat(amountSold);
+            float leg1Amtbrought = Float.parseFloat(amountBought);
+            String leg1forwardRate = fxRec.getLeg1FwdRate().getValue().toString();
+            String leg2forwardRate = fxRec.getForwardRate().getValue().toString();
+            String leg2Amountsold = fxRec.getAmountSold().getValue().toString();
+            String leg2Amountbrought = fxRec.getAmountBought().getValue().toString();
+
+            if ((leg2Amountsold.isEmpty()) || (leg2Amountbrought.isEmpty()) || (leg1forwardRate.isEmpty()) || (leg2forwardRate.isEmpty())) {
+
+                try {
+                    float leg2Amtsoldcheck = Float.parseFloat(leg2Amountsold);
+                    float leg2Amtbroughtcheck = Float.parseFloat(leg2Amountbrought);
+                    float leg1forwardratecheck = Float.parseFloat(leg1forwardRate);
+                    float leg2forwardratecheck = Float.parseFloat(leg2forwardRate);
+                } catch (NumberFormatException e) {
+
+                }
+            } else {
+
+                Session ses = new Session(this);
+                String comId = ses.getCompanyId().toString();
+                DataAccess da = new DataAccess(this);
+                CompanyRecord comRec = new CompanyRecord(da.getRecord("COMPANY", comId));
+                String localCcy = comRec.getLocalCurrency().getValue().toString();
+                float leg2Amtsold = Float.parseFloat(leg2Amountsold);
+                float leg2Amtbrought = Float.parseFloat(leg2Amountbrought);
+
+                if (leg1Amtbrought == leg2Amtsold) {
+                    // case 1 calculating SWAP P&L where => leg2BuyAmount (-)
+                    // leg1SellAmount
+                    float swpl1 = leg2Amtbrought - leg1Amtsold; // Now
+                                                                // calculating
+                                                                // Swap P&L
+                                                                // =leg2BuyAmount-leg1SellAmount
+                    String swapPandL1 = String.valueOf(swpl1);
+                    fxRec.getLocalRefField("L.SWPTPL.AMT").setValue(swapPandL1);
+
+                    String leg2BuyCcy = fxRec.getCurrencyBought().getValue().toString();
+                    String leg2SellCcy = fxRec.getCurrencySold().getValue().toString();
+                    fxRec.getLocalRefField("L.SWPTPL.CCY").setValue(leg2BuyCcy);
+
+                    // calc local profit
+                    if (!leg2BuyCcy.equals(localCcy)) {
+
+                        Currency ccyRec = new Currency(this);
+                        TDate date = new TDate("");
+                        TNumber exchangeRate = ccyRec.calculateRate(leg2BuyCcy, localCcy, "1", localCcy, date);
+                        String exchrate = String.valueOf(exchangeRate);
+                        fxRec.getLocalRefField("L.SWPTPL.XRATE").setValue(exchrate);
+                        float exchangerate = Float.parseFloat(exchrate);
+                        float localequ = swpl1 * exchangerate;
+                        String localequi = String.valueOf(localequ);
+                        fxRec.getLocalRefField("L.SWPTPL.LAMT").setValue(localequi);
+                    } else {
+                        fxRec.getLocalRefField("L.SWPTPL.XRATE").setValue("1");
+                        fxRec.getLocalRefField("L.SWPTPL.LAMT").setValue(swapPandL1);
+                    }
+                }
+
+                else if (leg1Amtsold == leg2Amtbrought) {
+                    // case2 calculating SWAP P&L where => leg1BuyAmount (-)
+                    // leg2SellAmount
+                    float swpl2 = leg1Amtbrought - leg2Amtsold; // Now
+                                                                // calculating
+                                                                // Swap P&L =
+                                                                // leg1BuyAmount-leg2SellAmount
+                    String swapPandL2 = String.valueOf(swpl2);
+                    fxRec.getLocalRefField("L.SWPTPL.AMT").setValue(swapPandL2);
+                    String leg2BoughtCcy = fxRec.getCurrencyBought().getValue().toString();
+                    String leg2SoldCcy = fxRec.getCurrencySold().getValue().toString();
+                    fxRec.getLocalRefField("L.SWPTPL.CCY").setValue(leg2SoldCcy);
+
+                    if (!leg2SoldCcy.equals(localCcy)) {
+
+                        Currency ccyRec = new Currency(this);
+                        TDate date = new TDate("");
+                        TNumber exchangeRate = ccyRec.calculateRate(leg2SoldCcy, localCcy, "1", localCcy, date);
+                        String exchrate = String.valueOf(exchangeRate);
+                        fxRec.getLocalRefField("L.SWPTPL.XRATE").setValue(exchrate);
+                        float exchangerate = Float.parseFloat(exchrate);
+                        float localequ = swpl2 * exchangerate;
+                        String localequi = String.valueOf(localequ);
+                        fxRec.getLocalRefField("L.SWPTPL.LAMT").setValue(localequi);
+                    } else {
+                        fxRec.getLocalRefField("L.SWPTPL.XRATE").setValue("1");
+                        fxRec.getLocalRefField("L.SWPTPL.LAMT").setValue(swapPandL2);
+                    }
+                } 
+
+                // For calculating swap points SPOTRATE (-) FORWARDRATE
+                
+                double leg1forwardrate = Double.parseDouble(leg1forwardRate);
+                double frRate = Double.parseDouble(leg2forwardRate);
+                double swapRate = frRate - leg1forwardrate;
+                BigDecimal bd = new BigDecimal(swapRate).setScale(9, RoundingMode.HALF_UP);
+                double newNum = bd.doubleValue();
+                String swpRate = String.valueOf(newNum);
+
+                fxRec.getLocalRefField("L.SWPT").setValue(swpRate);
+            }
+
+        }
+
+        currentRecord.set(fxRec.toStructure());
+
+    }
+}
